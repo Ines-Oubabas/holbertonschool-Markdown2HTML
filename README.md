@@ -5,17 +5,15 @@
 ##### Heading level 5
 ###### Heading level 6
 
-- Item one
-- Item two
-- Item with **bold**
-- Item with __emphasis__
-- Item with [[secret]]
-- Item with ((Caracas))
+- This is **bold**
+- This is __emphasis__
+- This is [[md5hash]]
+- This is ((Caracas))
 
 * Ordered 1
 * Ordered 2
 
 This is a paragraph
-with __emphasis__ and **bold** text
-and [[confidential]]
-and ((Canada))
+with **bold** and __emphasis__
+and [[hidden]]
+and ((cCcC))
