@@ -1,128 +1,129 @@
-#!/usr/bin/python3
-"""
-Markdown to HTML - Tasks 1 to 6: Headings, lists, paragraphs, bold,
-emphasis, extras
-"""
+#!/usr/bin/env python3
 
 import sys
 import os
-import re
 import hashlib
+import re
 
+def md5_hash(text):
+    return hashlib.md5(text.encode()).hexdigest()
 
-def convert_headings(line):
-    """Convert heading markdown to HTML"""
-    if line.startswith('#'):
-        count = 0
-        while count < len(line) and line[count] == '#':
-            count += 1
-        if 1 <= count <= 6 and len(line) > count and line[count] == ' ':
-            content = line[count:].strip()
-            return f"<h{count}>{apply_inline_formatting(content)}</h{count}>"
-    return None
+def remove_c(text):
+    return re.sub(r'c', '', text, flags=re.IGNORECASE)
 
+def convert_markdown_to_html(content):
+    lines = content.split('\n')
+    html_lines = []
+    in_unordered_list = False
+    in_ordered_list = False
+    in_paragraph = False
 
-def apply_inline_formatting(text):
-    """Apply **bold**, __emphasis__, [[MD5]], and ((remove C)) formatting"""
-    # Bold
-    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
-    # Emphasis
-    text = re.sub(r'__(.+?)__', r'<em>\1</em>', text)
-    # [[...]] to MD5
-    text = re.sub(r'\[\[(.+?)\]\]',
-                  lambda m: hashlib.md5(m.group(1).encode()).hexdigest(), text)
-    # ((...)) to remove 'c' and 'C'
-    text = re.sub(r'\(\((.+?)\)\)',
-                  lambda m: re.sub(r'[cC]', '', m.group(1)), text)
-    return text
+    def close_open_lists():
+        nonlocal in_unordered_list, in_ordered_list
+        if in_unordered_list:
+            html_lines.append("</ul>")
+            in_unordered_list = False
+        if in_ordered_list:
+            html_lines.append("</ol>")
+            in_ordered_list = False
 
+    for line in lines:
+        stripped_line = line.strip()
+
+        # Handle headings
+        if stripped_line.startswith('#'):
+            close_open_lists()
+            if in_paragraph:
+                html_lines.append("</p>")
+                in_paragraph = False
+            heading_level = len(stripped_line.split(' ')[0])
+            if 1 <= heading_level <= 6:
+                heading_text = stripped_line[heading_level:].strip()
+                html_lines.append(f"<h{heading_level}>{heading_text}</h{heading_level}>")
+            continue
+
+        # Handle unordered list items
+        if stripped_line.startswith('- '):
+            if in_ordered_list:
+                html_lines.append("</ol>")
+                in_ordered_list = False
+            if not in_unordered_list:
+                if in_paragraph:
+                    html_lines.append("</p>")
+                    in_paragraph = False
+                html_lines.append("<ul>")
+                in_unordered_list = True
+            list_item = stripped_line[2:].strip()
+            html_lines.append(f"    <li>{list_item}</li>")
+            continue
+
+        # Handle ordered list items
+        if stripped_line.startswith('* '):
+            if in_unordered_list:
+                html_lines.append("</ul>")
+                in_unordered_list = False
+            if not in_ordered_list:
+                if in_paragraph:
+                    html_lines.append("</p>")
+                    in_paragraph = False
+                html_lines.append("<ol>")
+                in_ordered_list = True
+            list_item = stripped_line[2:].strip()
+            html_lines.append(f"    <li>{list_item}</li>")
+            continue
+
+        # Handle custom bold, MD5, and content modification syntax
+        def custom_replacements(text):
+            text = re.sub(r'\[\[(.*?)\]\]', lambda m: md5_hash(m.group(1)), text)
+            text = re.sub(r'\(\((.*?)\)\)', lambda m: remove_c(m.group(1)), text)
+            return text
+
+        # Handle paragraphs
+        if stripped_line:
+            close_open_lists()
+            if not in_paragraph:
+                html_lines.append("<p>")
+                in_paragraph = True
+            elif in_paragraph:
+                html_lines.append("        <br />")
+            html_lines.append(f"    {custom_replacements(stripped_line)}")
+        else:
+            if in_paragraph:
+                html_lines.append("</p>")
+                in_paragraph = False
+
+    # Close any open lists or paragraphs at the end of the document
+    close_open_lists()
+    if in_paragraph:
+        html_lines.append("</p>")
+
+    return '\n'.join(html_lines)
 
 def main():
-    """Main entrypoint"""
-    if len(sys.argv) < 3:
-        sys.stderr.write("Usage: ./markdown2html.py README.md README.html\n")
-        exit(1)
+    if len(sys.argv) != 3:
+        print("Usage: ./markdown2html.py <input_markdown_file> <output_html_file>", file=sys.stderr)
+        sys.exit(1)
 
     input_file = sys.argv[1]
     output_file = sys.argv[2]
 
     if not os.path.isfile(input_file):
-        sys.stderr.write(f"Missing {input_file}\n")
-        exit(1)
+        print(f"Missing {input_file}", file=sys.stderr)
+        sys.exit(1)
 
-    with open(input_file, "r") as md_file, open(output_file, "w") as html_file:
-        in_ul = False
-        in_ol = False
-        paragraph_buffer = []
+    try:
+        with open(input_file, 'r', encoding='utf-8') as f:
+            markdown_content = f.read()
 
-        def flush_paragraph():
-            nonlocal paragraph_buffer
-            if paragraph_buffer:
-                html_file.write("<p>\n")
-                html_file.write("<br/>\n".join(paragraph_buffer) + "\n")
-                html_file.write("</p>\n")
-                paragraph_buffer = []
+        html_content = convert_markdown_to_html(markdown_content)
 
-        for line in md_file:
-            stripped = line.strip()
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(html_content)
 
-            if not stripped:
-                flush_paragraph()
-                if in_ul:
-                    html_file.write("</ul>\n")
-                    in_ul = False
-                if in_ol:
-                    html_file.write("</ol>\n")
-                    in_ol = False
-                continue
+    except Exception as e:
+        sys.exit(1)
 
-            heading = convert_headings(stripped)
-            if heading:
-                flush_paragraph()
-                if in_ul:
-                    html_file.write("</ul>\n")
-                    in_ul = False
-                if in_ol:
-                    html_file.write("</ol>\n")
-                    in_ol = False
-                html_file.write(heading + '\n')
-            elif stripped.startswith("- "):
-                flush_paragraph()
-                if in_ol:
-                    html_file.write("</ol>\n")
-                    in_ol = False
-                if not in_ul:
-                    html_file.write("<ul>\n")
-                    in_ul = True
-                content = apply_inline_formatting(stripped[2:].strip())
-                html_file.write(f"<li>{content}</li>\n")
-            elif stripped.startswith("* "):
-                flush_paragraph()
-                if in_ul:
-                    html_file.write("</ul>\n")
-                    in_ul = False
-                if not in_ol:
-                    html_file.write("<ol>\n")
-                    in_ol = True
-                content = apply_inline_formatting(stripped[2:].strip())
-                html_file.write(f"<li>{content}</li>\n")
-            else:
-                if in_ul:
-                    html_file.write("</ul>\n")
-                    in_ul = False
-                if in_ol:
-                    html_file.write("</ol>\n")
-                    in_ol = False
-                paragraph_buffer.append(apply_inline_formatting(stripped))
-
-        flush_paragraph()
-        if in_ul:
-            html_file.write("</ul>\n")
-        if in_ol:
-            html_file.write("</ol>\n")
-
-    exit(0)
-
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()
